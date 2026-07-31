@@ -27,6 +27,7 @@ import (
 	"tailscale.com/net/tstun"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tailcfg/nodecap"
+	"tailscale.com/tailcfg/peercap"
 	"tailscale.com/tsd"
 	"tailscale.com/tstest"
 	"tailscale.com/types/appctype"
@@ -93,10 +94,12 @@ func TestHandleConnectorTransitIPRequest(t *testing.T) {
 	}).View()
 
 	tests := []struct {
-		name         string
-		ctipReqPeers []tailcfg.NodeView           // One entry per request and the other
-		ctipReqs     []ConnectorTransitIPRequest  // arrays in this struct must have the same
-		wants        []ConnectorTransitIPResponse // cardinality
+		name           string
+		ctipReqPeers   []tailcfg.NodeView          // One entry per request and the other
+		ctipReqs       []ConnectorTransitIPRequest // arrays in this struct must have the same
+		missingPeerCap bool
+		bypassFilter   bool
+		wants          []ConnectorTransitIPResponse // cardinality
 		// For checking lookups:
 		//	The outer array needs to correspond to the number of requests,
 		//	can be nil if no lookups need to be done after the request is processed.
@@ -326,6 +329,53 @@ func TestHandleConnectorTransitIPRequest(t *testing.T) {
 				{{pipV4_2, tipV4_1, netip.Addr{}}},
 			},
 		},
+		// Missing PeerCap
+		{
+			name:         "missing-peercap",
+			ctipReqPeers: []tailcfg.NodeView{peerV4Only},
+			ctipReqs: []ConnectorTransitIPRequest{
+				{TransitIPs: []TransitIPRequest{{TransitIP: tipV4_1, DestinationIP: dipV4_1, App: appName}}},
+			},
+			missingPeerCap: true,
+			wants: []ConnectorTransitIPResponse{
+				{TransitIPs: []TransitIPResponse{{Code: MissingAppPermission, Message: missingAppPermissionMessage}}},
+			},
+			wantLookups: [][][]netip.Addr{
+				{{pipV4_2, tipV4_1, netip.Addr{}}},
+			},
+		},
+		// Missing PeerCap but BypassFilter is set
+		{
+			name:         "missing-peercap-bypass",
+			ctipReqPeers: []tailcfg.NodeView{peerV4Only},
+			ctipReqs: []ConnectorTransitIPRequest{
+				{TransitIPs: []TransitIPRequest{{TransitIP: tipV4_1, DestinationIP: dipV4_1, App: appName}}},
+			},
+			missingPeerCap: true,
+			bypassFilter:   true,
+			wants: []ConnectorTransitIPResponse{
+				{TransitIPs: []TransitIPResponse{{Code: OK, Message: ""}}},
+			},
+			wantLookups: [][][]netip.Addr{
+				{{pipV4_2, tipV4_1, dipV4_1}},
+			},
+		},
+		// Has PeerCap and BypassFilter is set
+		{
+			name:         "has-peercap-bypass",
+			ctipReqPeers: []tailcfg.NodeView{peerV4Only},
+			ctipReqs: []ConnectorTransitIPRequest{
+				{TransitIPs: []TransitIPRequest{{TransitIP: tipV4_1, DestinationIP: dipV4_1, App: appName}}},
+			},
+			missingPeerCap: true,
+			bypassFilter:   true,
+			wants: []ConnectorTransitIPResponse{
+				{TransitIPs: []TransitIPResponse{{Code: OK, Message: ""}}},
+			},
+			wantLookups: [][][]netip.Addr{
+				{{pipV4_2, tipV4_1, dipV4_1}},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -346,14 +396,25 @@ func TestHandleConnectorTransitIPRequest(t *testing.T) {
 			c := newConn25(logger.Discard)
 			c.reconfig(&config{
 				isConfigured: true,
-				appsByName:   map[string]appctype.Conn25Attr{appName: {}},
+				appsByName: map[string]appctype.Conn25Attr{
+					appName: {
+						Name:                        appName,
+						TemporaryUnsafeBypassFilter: tt.bypassFilter,
+					},
+				},
 			})
 
 			for i, peer := range tt.ctipReqPeers {
 				req := tt.ctipReqs[i]
 				want := tt.wants[i]
+				var peerCap tailcfg.PeerCapMap
+				if !tt.missingPeerCap {
+					peerCap = tailcfg.PeerCapMap{
+						peercap.Conn25Prefix.ToAttribute(appName): []tailcfg.RawMessage{`"*"`},
+					}
+				}
 
-				resp := c.handleConnectorTransitIPRequest(peer, req)
+				resp := c.handleConnectorTransitIPRequest(peer, peerCap, req)
 
 				// Ensure that we have the expected number of responses
 				if len(resp.TransitIPs) != len(want.TransitIPs) {
