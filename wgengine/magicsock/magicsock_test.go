@@ -4350,7 +4350,7 @@ func TestConn_receiveIP(t *testing.T) {
 					t.Fatal("unexpected tt.wantEndpointType concrete type")
 				}
 				insertEPIntoPeerMap.c = c
-				c.peerMap.upsertEndpoint(insertEPIntoPeerMap, key.DiscoPublic{})
+				c.peerMap.upsertEndpoint(insertEPIntoPeerMap, key.DiscoPublic{}, false)
 				c.peerMap.setNodeKeyForEpAddr(tt.peerMapEpAddr, insertEPIntoPeerMap.publicKey)
 			}
 
@@ -4481,7 +4481,7 @@ func Test_lazyEndpoint_InitiationMessagePublicKey(t *testing.T) {
 			if tt.callWithPeerMapKey {
 				copy(pubKey[:], ep.publicKey.AppendTo(nil))
 			}
-			conn.peerMap.upsertEndpoint(ep, key.DiscoPublic{})
+			conn.peerMap.upsertEndpoint(ep, key.DiscoPublic{}, false)
 
 			le := &lazyEndpoint{
 				c: conn,
@@ -4540,7 +4540,7 @@ func Test_lazyEndpoint_FromPeer(t *testing.T) {
 			if tt.callWithPeerMapKey {
 				copy(pubKey[:], ep.publicKey.AppendTo(nil))
 			}
-			conn.peerMap.upsertEndpoint(ep, key.DiscoPublic{})
+			conn.peerMap.upsertEndpoint(ep, key.DiscoPublic{}, false)
 
 			le := &lazyEndpoint{
 				c:   conn,
@@ -4678,7 +4678,7 @@ func TestReceiveTSMPDiscoKeyAdvertisement(t *testing.T) {
 			conn.peersByID = map[tailcfg.NodeID]tailcfg.NodeView{nodeView.ID(): nodeView}
 			conn.mu.Unlock()
 
-			conn.peerMap.upsertEndpoint(ep, key.DiscoPublic{})
+			conn.peerMap.upsertEndpoint(ep, key.DiscoPublic{}, true)
 
 			if ep.discoShort() != discoKey.ShortString() {
 				t.Errorf("Original disco key %s, does not match %s", discoKey.ShortString(), ep.discoShort())
@@ -4744,7 +4744,7 @@ func TestPriorityMessageForPeer(t *testing.T) {
 	}
 
 	conn.mu.Lock()
-	conn.peerMap.upsertEndpoint(ep, key.DiscoPublic{})
+	conn.peerMap.upsertEndpoint(ep, key.DiscoPublic{}, false)
 	conn.mu.Unlock()
 
 	// Test isWireguardOnly.
@@ -4842,7 +4842,7 @@ func BenchmarkPriorityMessageForPeer(b *testing.B) {
 				}).View()
 				peersByID[nodeID] = nodeView
 				conn.mu.Lock()
-				conn.peerMap.upsertEndpoint(ep, key.DiscoPublic{})
+				conn.peerMap.upsertEndpoint(ep, key.DiscoPublic{}, false)
 				conn.mu.Unlock()
 			}
 
