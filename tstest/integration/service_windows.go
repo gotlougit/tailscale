@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 	"tailscale.com/tsconst/wintun"
@@ -56,7 +57,7 @@ func (n *TestNode) startWindowsServiceDaemon() *Daemon {
 
 	n.startService()
 	n.waitServiceReady(90 * time.Second)
-	return &Daemon{svc: n}
+	return &Daemon{node: n, svc: n}
 }
 
 // startService starts the service and waits for the SCM to report it Running.
@@ -95,10 +96,36 @@ func (n *TestNode) stopService() {
 	if st.State == svc.Stopped {
 		return
 	}
+	pid := st.ProcessId
 	if _, err := s.Control(svc.Stop); err != nil {
 		t.Fatalf("stop service %q: %v", serviceName, err)
 	}
 	n.waitServiceState(s, svc.Stopped, 60*time.Second)
+	n.waitProcessGone(pid, 30*time.Second)
+}
+
+// waitProcessGone waits for pid to exit, as the SCM reports Stopped while the
+// service's process is still running and holding an image lock on its binary,
+// which fails the test's [testing.T.TempDir] cleanup.
+func (n *TestNode) waitProcessGone(pid uint32, timeout time.Duration) {
+	t := n.env.t
+	t.Helper()
+	if pid == 0 {
+		return
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		h, err := windows.OpenProcess(windows.SYNCHRONIZE, false, pid)
+		if err != nil {
+			return // no longer openable; it's gone
+		}
+		state, err := windows.WaitForSingleObject(h, 100)
+		windows.CloseHandle(h)
+		if err == nil && state == uint32(windows.WAIT_OBJECT_0) {
+			return
+		}
+	}
+	t.Fatalf("service process %d still running %v after the service stopped", pid, timeout)
 }
 
 // uninstallService removes the service via tailscaled's uninstall-system-daemon
