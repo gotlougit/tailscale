@@ -126,6 +126,9 @@ type NetstackImpl interface {
 	UpdateNetstackIPs(*netmap.NetworkMap)
 	UpdateIPServiceMappings(netmap.IPServiceMappings)
 	UpdateActiveVIPServices(views.Slice[string])
+	// SetWarpClient enables or disables WARP mode; wc is a
+	// *net/warp.Client, or nil to disable.
+	SetWarpClient(wc any)
 }
 
 // Set is a convenience method to set a subsystem value.

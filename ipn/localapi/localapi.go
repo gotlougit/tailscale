@@ -115,6 +115,9 @@ func init() {
 		Register("suggest-exit-node", (*Handler).serveSuggestExitNode)
 		Register("set-use-exit-node-enabled", (*Handler).serveSetUseExitNodeEnabled)
 	}
+	if buildfeatures.HasWarp {
+		Register("warp-status", (*Handler).serveWarpStatus)
+	}
 	if buildfeatures.HasACME {
 		Register("set-dns", (*Handler).serveSetDNS)
 	}
@@ -1955,4 +1958,22 @@ func (h *Handler) serveGetAppcRouteInfo(w http.ResponseWriter, r *http.Request) 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(res)
+}
+
+// serveWarpStatus reports the current Cloudflare WARP status.
+func (h *Handler) serveWarpStatus(w http.ResponseWriter, r *http.Request) {
+	if !buildfeatures.HasWarp {
+		http.Error(w, feature.ErrUnavailable.Error(), http.StatusNotImplemented)
+		return
+	}
+	if r.Method != httpm.GET {
+		http.Error(w, "only GET allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !h.PermitRead {
+		http.Error(w, "warp status access denied", http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(h.b.WarpStatus())
 }

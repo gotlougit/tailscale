@@ -67,6 +67,7 @@ import (
 	"tailscale.com/net/routemanager"
 	"tailscale.com/net/traffic"
 	"tailscale.com/net/tsaddr"
+	"tailscale.com/net/warp"
 	"tailscale.com/net/tsdial"
 	"tailscale.com/paths"
 	"tailscale.com/syncs"
@@ -329,6 +330,7 @@ type LocalBackend struct {
 	ccGen            clientGen          // function for producing controlclient; lazily populated
 	sshServer        SSHServer          // or nil, initialized lazily.
 	appConnector     *appc.AppConnector // or nil, initialized when configured.
+	warp             *warp.Client       // or nil; WARP mode (see warp.go)
 	// notifyCancel cancels notifications to the current SetNotifyCallback.
 	notifyCancel context.CancelFunc
 	cc           controlclient.Client // TODO(nickkhyl): move to nodeBackend
@@ -1346,11 +1348,20 @@ func (b *LocalBackend) shutdown() {
 		b.notifyCancel()
 	}
 	b.appConnector.Close()
+	wc := b.warp
+	b.warp = nil
+	if wc != nil {
+		b.warpSetNetstackLocked(nil)
+		b.health.SetHealthy(warnWarpUnhealthy)
+	}
 	b.mu.Unlock()
 
 	// These shutdown methods wait for goroutines that can acquire b.mu. The
 	// state gates above prevent either subsystem from restarting after the
 	// mutex is released.
+	if wc != nil {
+		wc.Close()
+	}
 	b.shutdownCertRefreshLoop()
 	if sshServer != nil {
 		sshServer.Shutdown()
@@ -5561,6 +5572,7 @@ func (b *LocalBackend) setPrefsLocked(newp *ipn.Prefs) ipn.PrefsView {
 	b.pauseOrResumeControlClientLocked() // for prefs.Sync changes
 	b.updateWarnSync(prefs)
 	b.updateNoSNATExitNodeWarning(prefs)
+	b.updateWarpLocked(prefs)
 
 	if oldp.ShieldsUp() != newp.ShieldsUp || hostInfoChanged {
 		b.doSetHostinfoFilterServicesLocked()
@@ -6620,6 +6632,14 @@ func (b *LocalBackend) routerConfigLocked(cfg *wgcfg.Config, prefs ipn.PrefsView
 		rs.Routes = extensionRoutesFx().AppendTo(rs.Routes)
 	}
 
+	// WARP mode: route internet-bound traffic into the Tailscale interface
+	// so the netstack WARP hook can tunnel it to Cloudflare. Local networks
+	// are left in the main routing table (not blackholed, unlike exit node
+	// mode) so LAN traffic still goes directly.
+	if buildfeatures.HasWarp && prefs.WarpMode() {
+		rs.Routes = append(rs.Routes, tsaddr.AllIPv4(), tsaddr.AllIPv6())
+	}
+
 	return rs
 }
 
@@ -7251,6 +7271,9 @@ func (b *LocalBackend) reconcilePrefsLocked(prefs *ipn.Prefs) (changed bool) {
 		changed = true
 	}
 	if buildfeatures.HasUseExitNode && b.resolveExitNodeInPrefsLocked(prefs) {
+		changed = true
+	}
+	if buildfeatures.HasWarp && b.reconcileWarpPrefsLocked(prefs) {
 		changed = true
 	}
 	if changed {

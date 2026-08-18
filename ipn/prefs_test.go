@@ -50,6 +50,7 @@ func TestPrefsEqual(t *testing.T) {
 		"WantRunning",
 		"LoggedOut",
 		"ShieldsUp",
+		"WarpMode",
 		"AdvertiseTags",
 		"Hostname",
 		"NotepadURLs",
@@ -249,6 +250,16 @@ func TestPrefsEqual(t *testing.T) {
 		{
 			&Prefs{ShieldsUp: true},
 			&Prefs{ShieldsUp: true},
+			true,
+		},
+		{
+			&Prefs{WarpMode: true},
+			&Prefs{WarpMode: false},
+			false,
+		},
+		{
+			&Prefs{WarpMode: true},
+			&Prefs{WarpMode: true},
 			true,
 		},
 
