@@ -1008,6 +1008,17 @@ func (lc *Client) GetDNSOSConfig(ctx context.Context) (*apitype.DNSOSConfig, err
 	return &osCfg, nil
 }
 
+// WarpStatus returns the current Cloudflare WARP status from the daemon as
+// raw JSON (the shape is tailscale.com/net/warp.Status). It returns a
+// non-nil error if the daemon doesn't support WARP.
+func (lc *Client) WarpStatus(ctx context.Context) (json.RawMessage, error) {
+	body, err := lc.get200(ctx, "/localapi/v0/warp-status")
+	if err != nil {
+		return nil, err
+	}
+	return json.RawMessage(body), nil
+}
+
 // QueryDNS executes a DNS query for a name (`google.com.`) and query type (`CNAME`).
 // It returns the raw DNS response bytes and the resolvers that were used to answer the query
 // (often just one, but can be more if we raced multiple resolvers).

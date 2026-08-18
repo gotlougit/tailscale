@@ -311,6 +311,11 @@ var Features = map[FeatureTag]FeatureMeta{
 		Sym:  "UserMetrics",
 		Desc: "Usermetrics (documented, stable) metrics support",
 	},
+	"warp": {
+		Sym:  "Warp",
+		Desc: "Route internet traffic through Cloudflare WARP (MASQUE)",
+		Deps: []FeatureTag{"netstack"},
+	},
 	"wakeonlan": {Sym: "WakeOnLAN", Desc: "Wake-on-LAN support"},
 	"webbrowser": {
 		Sym:  "WebBrowser",

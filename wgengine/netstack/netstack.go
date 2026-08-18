@@ -184,6 +184,16 @@ type Impl struct {
 	// over the UDP flow.
 	GetUDPHandlerForFlow func(src, dst netip.AddrPort) (handler func(nettype.ConnPacketConn), intercept bool)
 
+	// warpClient is the active WARP client used to tunnel internet-bound
+	// traffic, or nil if WARP mode is off. See [Impl.SetWarpClient].
+	warpClient     syncs.AtomicValue[WarpClient]
+	warpGeneration atomic.Uint64
+	warpMu         sync.Mutex
+	warpFlows      map[warpFlowKey]warpFlow
+	warpFallback4  netip.Addr
+	warpFallback6  netip.Addr
+	warpLastGC     time.Time
+
 	// CheckLocalTransportEndpoints, if true, causes netstack to check if gVisor
 	// has a registered endpoint for incoming packets to local IPs. This is used
 	// by tsnet to intercept packets for registered listeners and outbound
@@ -889,6 +899,14 @@ func (ns *Impl) handleLocalPackets(p *packet.Parsed, t *tstun.Wrapper, gro *gro.
 			ns.logf("netstack: intercepting local VIP service packet: proto=%v dst=%v src=%v",
 				p.IPProto, p.Dst, p.Src)
 		}
+	case ns.isWarpClient() && ns.warpIntercept(p):
+		// WARP mode is on and this is internet-bound traffic. Send the
+		// complete packet directly over CONNECT-IP rather than handing
+		// the flow to gVisor.
+		if err := ns.warpSendOutbound(p); err != nil {
+			ns.logf("netstack: warp: sending outbound packet: %v", err)
+		}
+		return filter.DropSilently, gro
 	case viaRange.Contains(dst):
 		// We need to handle 4via6 packets leaving the host if the via
 		// route is for this host; otherwise the packet will be dropped
@@ -1155,6 +1173,7 @@ func (ns *Impl) shouldSendToHost(pkt *stack.PacketBuffer) bool {
 				}
 			}
 		}
+
 	default:
 		// unknown; don't forward to host
 		if debugNetstack() {

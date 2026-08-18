@@ -87,6 +87,7 @@ var _PrefsCloneNeedsRegeneration = Prefs(struct {
 	WantRunning                bool
 	LoggedOut                  bool
 	ShieldsUp                  bool
+	WarpMode                   bool
 	AdvertiseTags              []string
 	Hostname                   string
 	NotepadURLs                bool

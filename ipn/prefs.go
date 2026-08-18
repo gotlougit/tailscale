@@ -163,6 +163,12 @@ type Prefs struct {
 	// connections. This overrides tailcfg.Hostinfo's ShieldsUp.
 	ShieldsUp bool
 
+	// WarpMode specifies whether internet-bound traffic that isn't
+	// covered by localhost, local networks, or the tailnet should be
+	// routed through Cloudflare WARP instead of sent directly. It is
+	// mutually exclusive with selecting a tailnet exit node.
+	WarpMode bool
+
 	// AdvertiseTags specifies tags that should be applied to this node, for
 	// purposes of ACL enforcement. These can be referenced from the ACL policy
 	// document. Note that advertising a tag on the client doesn't guarantee
@@ -369,6 +375,7 @@ type MaskedPrefs struct {
 	WantRunningSet                bool                `json:",omitempty"`
 	LoggedOutSet                  bool                `json:",omitempty"`
 	ShieldsUpSet                  bool                `json:",omitempty"`
+	WarpModeSet                   bool                `json:",omitempty"`
 	AdvertiseTagsSet              bool                `json:",omitempty"`
 	HostnameSet                   bool                `json:",omitempty"`
 	NotepadURLsSet                bool                `json:",omitempty"`
@@ -682,6 +689,7 @@ func (p *Prefs) Equals(p2 *Prefs) bool {
 		p.LoggedOut == p2.LoggedOut &&
 		p.NotepadURLs == p2.NotepadURLs &&
 		p.ShieldsUp == p2.ShieldsUp &&
+		p.WarpMode == p2.WarpMode &&
 		p.NoSNAT == p2.NoSNAT &&
 		p.NoStatefulFiltering == p2.NoStatefulFiltering &&
 		p.NetfilterMode == p2.NetfilterMode &&

@@ -325,6 +325,12 @@ func (v PrefsView) LoggedOut() bool { return v.ж.LoggedOut }
 // connections. This overrides tailcfg.Hostinfo's ShieldsUp.
 func (v PrefsView) ShieldsUp() bool { return v.ж.ShieldsUp }
 
+// WarpMode specifies whether internet-bound traffic that isn't
+// covered by localhost, local networks, or the tailnet should be
+// routed through Cloudflare WARP instead of sent directly. It is
+// mutually exclusive with selecting a tailnet exit node.
+func (v PrefsView) WarpMode() bool { return v.ж.WarpMode }
+
 // AdvertiseTags specifies tags that should be applied to this node, for
 // purposes of ACL enforcement. These can be referenced from the ACL policy
 // document. Note that advertising a tag on the client doesn't guarantee
@@ -504,6 +510,7 @@ var _PrefsViewNeedsRegeneration = Prefs(struct {
 	WantRunning                bool
 	LoggedOut                  bool
 	ShieldsUp                  bool
+	WarpMode                   bool
 	AdvertiseTags              []string
 	Hostname                   string
 	NotepadURLs                bool

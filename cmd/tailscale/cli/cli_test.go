@@ -1051,6 +1051,10 @@ func TestPrefFlagMapping(t *testing.T) {
 		case "AutoExitNode":
 			// Handled by tailscale {set,up} --exit-node=auto:any.
 			continue
+		case "WarpMode":
+			// Handled by the tailscale warp subcommand, we don't want a
+			// CLI flag for this.
+			continue
 		}
 		t.Errorf("unexpected new ipn.Pref field %q is not handled by up.go (see addPrefFlagMapping and checkForAccidentalSettingReverts)", prefName)
 	}
@@ -1860,5 +1864,89 @@ func TestSanitizeWriter(t *testing.T) {
 	}
 	if got := buf.Bytes(); !bytes.Equal(got, want) {
 		t.Errorf("unexpected sanitized content\ngot: %q\nwant: %q", got, want)
+	}
+}
+
+func TestTunnelState(t *testing.T) {
+	tests := []struct {
+		name string
+		st   warpStatusJSON
+		want string
+	}{
+		{
+			name: "not-enabled",
+			st:   warpStatusJSON{Enabled: false},
+			want: "off (warp mode not enabled)",
+		},
+		{
+			name: "not-registered",
+			st:   warpStatusJSON{Enabled: true, Registered: false},
+			want: "dead (not registered)",
+		},
+		{
+			name: "not-registered-with-error",
+			st:   warpStatusJSON{Enabled: true, Registered: false, LastError: "network error"},
+			want: "dead (registration failed: network error)",
+		},
+		{
+			name: "connected",
+			st:   warpStatusJSON{Enabled: true, Registered: true, Connected: true, Endpoint: "162.159.198.2:443"},
+			want: "connected to 162.159.198.2:443",
+		},
+		{
+			name: "disconnected-no-error",
+			st:   warpStatusJSON{Enabled: true, Registered: true, Connected: false},
+			want: "disconnected",
+		},
+		{
+			name: "disconnected-with-error",
+			st:   warpStatusJSON{Enabled: true, Registered: true, Connected: false, LastError: "warp: QUIC dial failed: timeout"},
+			want: "disconnected (warp: QUIC dial failed: timeout)",
+		},
+		{
+			name: "connected-empty-endpoint",
+			st:   warpStatusJSON{Enabled: true, Registered: true, Connected: true},
+			want: "connected to ",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tunnelState(tt.st)
+			if got != tt.want {
+				t.Errorf("tunnelState(%+v) = %q; want %q", tt.st, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestOnOrOff(t *testing.T) {
+	tests := []struct {
+		v    bool
+		want string
+	}{
+		{true, "on"},
+		{false, "off"},
+	}
+	for _, tt := range tests {
+		got := onOrOff(tt.v)
+		if got != tt.want {
+			t.Errorf("onOrOff(%v) = %q; want %q", tt.v, got, tt.want)
+		}
+	}
+}
+
+func TestYesOrNo(t *testing.T) {
+	tests := []struct {
+		v    bool
+		want string
+	}{
+		{true, "yes"},
+		{false, "no"},
+	}
+	for _, tt := range tests {
+		got := yesOrNo(tt.v)
+		if got != tt.want {
+			t.Errorf("yesOrNo(%v) = %q; want %q", tt.v, got, tt.want)
+		}
 	}
 }
