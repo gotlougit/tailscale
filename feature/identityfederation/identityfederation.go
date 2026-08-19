@@ -19,6 +19,7 @@ import (
 	"tailscale.com/feature"
 	"tailscale.com/internal/client/tailscale"
 	"tailscale.com/ipn"
+	"tailscale.com/util/authretry"
 	"tailscale.com/wif"
 )
 
@@ -56,10 +57,12 @@ func resolveAuthKey(ctx context.Context, args tailscale.ResolveAuthKeyWIFArgs) (
 		return "", fmt.Errorf("failed to parse optional config attributes: %w", err)
 	}
 
-	accessToken, err := exchangeJWTForToken(ctx, tailscale.ExchangeJWTForTokenWIFArgs{
-		BaseURL:  args.BaseURL,
-		ClientID: strippedID,
-		IDToken:  args.IDToken,
+	accessToken, err := authretry.RetryOnTransientFailure(ctx, "exchange-jwt", args.RetryTransientAuthErrors, func() (string, error) {
+		return exchangeJWTForToken(ctx, tailscale.ExchangeJWTForTokenWIFArgs{
+			BaseURL:  args.BaseURL,
+			ClientID: strippedID,
+			IDToken:  args.IDToken,
+		})
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to exchange JWT for access token: %w", err)
@@ -132,8 +135,8 @@ func exchangeJWTForToken(ctx context.Context, args tailscale.ExchangeJWTForToken
 	}).Exchange(ctx, "", oauth2.SetAuthURLParam("client_id", args.ClientID), oauth2.SetAuthURLParam("jwt", args.IDToken))
 	if err != nil {
 		// Try to extract more detailed error message
-		if retrieveErr, ok := errors.AsType[*oauth2.RetrieveError](err); ok {
-			return "", fmt.Errorf("token exchange failed with status %d: %s", retrieveErr.Response.StatusCode, string(retrieveErr.Body))
+		if retrieveErr, ok := errors.AsType[*oauth2.RetrieveError](err); ok && retrieveErr.Response != nil {
+			return "", fmt.Errorf("token exchange failed with status %d: %w", retrieveErr.Response.StatusCode, retrieveErr)
 		}
 		return "", fmt.Errorf("unexpected token exchange request error: %w", err)
 	}
