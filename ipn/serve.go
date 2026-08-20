@@ -532,6 +532,41 @@ func (sc *ServeConfig) SetFunnel(host string, port uint16, setOn bool) {
 	}
 }
 
+// SetRedirectToHTTPS configures a TCPPortHandler and HTTPHandler to redirect all
+// traffic from port 80 to the HTTPS URL derived from the provided host and port.
+// If setOn is false, it removes any active redirect handlers on port 80.
+func (sc *ServeConfig) SetRedirectToHTTPS(host string, port uint16, setOn bool) {
+	if sc == nil {
+		sc = new(ServeConfig)
+	}
+	hp := HostPort(net.JoinHostPort(host, "80"))
+	if setOn {
+		mak.Set(&sc.TCP, 80, &TCPPortHandler{HTTP: true})
+		var url string
+		if port == 443 {
+			url = fmt.Sprintf("https://%s", host)
+		} else {
+			url = fmt.Sprintf("https://%s:%d", host, port)
+		}
+		handler := &HTTPHandler{Redirect: url}
+		if _, ok := sc.Web[hp]; !ok {
+			mak.Set(&sc.Web, hp, new(WebServerConfig))
+		}
+		// Overwrite any existing handlers as we're handling all HTTP traffic.
+		sc.Web[hp].Handlers = map[string]*HTTPHandler{"/": handler}
+	} else {
+		// If we're running with HTTP to HTTPS promotion, remove any existing
+		// Redirect handlers on port 80.
+		if tcph, exists := sc.TCP[80]; exists && tcph.HTTP {
+			if wh, exists := sc.Web[hp]; exists {
+				if wh.Handlers["/"].Redirect != "" {
+					delete(wh.Handlers, "/")
+				}
+			}
+		}
+	}
+}
+
 // RemoveWebHandler deletes the web handlers at all of the given mount points for the
 // provided host and port in the serve config for the node (as opposed to a service).
 // If cleanupFunnel is true, this also removes the funnel value for this port if no handlers remain.
