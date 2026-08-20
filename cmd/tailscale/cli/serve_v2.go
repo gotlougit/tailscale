@@ -243,6 +243,7 @@ func newServeV2Command(e *serveEnv, subcmd serveMode) *ffcli.Command {
 			fs.UintVar(&e.https, "https", 0, "Expose an HTTPS server at the specified port (default mode)")
 			if subcmd == serve {
 				fs.UintVar(&e.http, "http", 0, "Expose an HTTP server at the specified port")
+				fs.BoolVar(&e.promoteHTTPS, "promote-https", false, "Promote HTTP to HTTPS (default false)")
 				fs.Var(&acceptAppCapsFlag{Value: &e.acceptAppCaps}, "accept-app-caps", "App capabilities to forward to the server (specify multiple capabilities with a comma-separated list)")
 				fs.Var(&serviceNameFlag{Value: &e.service}, "service", "Serve for a service with distinct virtual IP instead on node itself.")
 				fs.BoolVar(&e.tun, "tun", false, "Forward all traffic to the local machine (default false), only supported for services. Refer to docs for more information.")
@@ -437,6 +438,11 @@ func (e *serveEnv) runServeCombined(subcmd serveMode) execFunc {
 			return fmt.Errorf("invalid PROXY protocol version %d; must be 1 or 2", e.proxyProtocol)
 		}
 
+		if srvType == serveTypeHTTP && e.promoteHTTPS {
+			fmt.Fprintf(e.stderr(), "error: --promote-https is only valid for HTTPS\n\n")
+			return errHelpFunc(subcmd)
+		}
+
 		sc, err := e.lc.GetServeConfig(ctx)
 		if err != nil {
 			return fmt.Errorf("error getting serve config: %w", err)
@@ -527,6 +533,8 @@ func (e *serveEnv) runServeCombined(subcmd serveMode) execFunc {
 				return err
 			}
 			err = e.setServe(sc, dnsName, srvType, srvPort, mount, target, funnel, magicDNSSuffix, e.acceptAppCaps, int(e.proxyProtocol))
+
+
 			msg = e.messageForPort(sc, st, dnsName, srvType, srvPort)
 		}
 		if err != nil {
